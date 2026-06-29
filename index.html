@@ -1,9 +1,12 @@
+
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Arkanoid Pro - 3 Niveles</title>
+
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -11,33 +14,116 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   min-height: 100vh;
   font-family: system-ui, sans-serif;
   color: #fff;
   touch-action: none;
 }
-h1 { font-size: 24px; color: #60a5fa; margin-bottom: 8px; }
-#hud { display: flex; gap: 24px; margin-bottom: 8px; font-size: 14px; font-weight: 500; color: #a0c4ff; }
+
+h1 { font-size: 24px; color: #60a5fa; margin: 12px 0; }
+
+#hud {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #a0c4ff;
+}
 #hud span { color: #fff; }
-canvas { border: 2px solid #334; display: block; max-width: 100%; }
-#msg { margin-top: 12px; font-size: 20px; font-weight: 500; color: #fff; min-height: 28px; text-align: center; }
-#start-btn { margin-top: 10px; padding: 8px 28px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-size: 15px; cursor: pointer; }
+
+canvas {
+  border: 2px solid #334;
+  display: block;
+  max-width: 100%;
+}
+
+#msg {
+  margin-top: 12px;
+  font-size: 20px;
+  font-weight: 500;
+  color: #fff;
+  min-height: 28px;
+  text-align: center;
+}
+
+#start-btn {
+  margin-top: 10px;
+  padding: 8px 28px;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  cursor: pointer;
+}
 #start-btn:hover { background: #1d4ed8; }
+
+/* BOTÓN DE DISPARO/SOLTAR (móvil) */
+#fire-btn {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #ef4444;
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 70px;
+  height: 70px;
+  font-size: 18px;
+  font-weight: bold;
+  display: none;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 0 12px #000;
+}
+
+/* BOTÓN DE SONIDO */
+#sound-btn {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  background: #1e293b;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: 0 0 8px #000;
+}
+#sound-btn:hover { background: #334155; }
 </style>
 </head>
+
 <body>
+
 <h1>Arkanoid Pro</h1>
+
 <div id="hud">
   Puntos: <span id="score">0</span>
-  &nbsp;&nbsp;Nivel: <span id="level">1</span>
-  &nbsp;&nbsp;Vidas: <span id="lives">3</span>
+  Nivel: <span id="level">1</span>
+  Vidas: <span id="lives">3</span>
 </div>
+
 <canvas id="c" width="420" height="480"></canvas>
+
 <div id="msg">Pulsa INICIO para jugar</div>
 <button id="start-btn">INICIO</button>
 
+<!-- Botón móvil de disparo/soltar -->
+<button id="fire-btn">FIRE</button>
+
+<!-- Botón de sonido -->
+<button id="sound-btn">🔊</button>
+
 <script>
+/* ============================
+   CONFIGURACIÓN INICIAL
+   ============================ */
+
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const W = 420, H = 480;
@@ -50,83 +136,459 @@ const LEVELS = [
 
 let bricks=[], ball={}, paddle={}, score=0, lives=3, level=0, running=false, raf=null;
 const BW=36, BH=14, BPAD=2, BOFFX=9, BOFFY=40;
-const PW=70, PH=10, PSPEED=6, BR=7;
+const PW_BASE=70, PH=10, PSPEED=6, BR=7;
+
+let powerups = [];
+let bullets = [];       // LASER
+let stickyMode = false; // STICKY
+let laserMode = false;  // LASER
+let soundEnabled = true;
+
+/* ============================
+   MÓDULO DE SONIDO
+   ============================ */
+
+const sndBounce = new Audio("https://cdn.jsdelivr.net/gh/joseperezxyz/sfx/bounce.mp3");
+const sndBrick = new Audio("https://cdn.jsdelivr.net/gh/joseperezxyz/sfx/brick.mp3");
+const sndExplode = new Audio("https://cdn.jsdelivr.net/gh/joseperezxyz/sfx/explode.mp3");
+const sndPower = new Audio("https://cdn.jsdelivr.net/gh/joseperezxyz/sfx/power.mp3");
+const sndLaser = new Audio("https://cdn.jsdelivr.net/gh/joseperezxyz/sfx/laser.mp3");
+const sndSticky = new Audio("https://cdn.jsdelivr.net/gh/joseperezxyz/sfx/sticky.mp3");
+const sndWin = new Audio("https://cdn.jsdelivr.net/gh/joseperezxyz/sfx/win.mp3");
+const sndGameOver = new Audio("https://cdn.jsdelivr.net/gh/joseperezxyz/sfx/gameover.mp3");
+
+function playSound(s) {
+  if (soundEnabled) {
+    s.currentTime = 0;
+    s.play();
+  }
+}
+
+
+/* ============================
+   LADRILLOS ESPECIALES
+   ============================ */
+
+function randomBrickType() {
+  const r = Math.random();
+  if (r < 0.10) return "hard";
+  if (r < 0.15) return "explosive";
+  if (r < 0.20) return "invisible";
+  return "normal";
+}
+
+/* ============================
+   INICIALIZAR NIVEL
+   ============================ */
 
 function initLevel(lv) {
   const L = LEVELS[lv];
   bricks = [];
-  for(let r=0;r<L.rows;r++) for(let c=0;c<L.cols;c++)
-    bricks.push({ x: BOFFX + c*(BW+BPAD), y: BOFFY + r*(BH+BPAD), alive: true, color: L.colors[r % L.colors.length] });
-  paddle = { x: W/2 - PW/2, y: H-30, w: PW, h: PH, dx: 0 };
-  ball = { x: W/2, y: H-50, r: BR, dx: 3.5 + lv*0.4, dy: -(3.5 + lv*0.4) };
+  powerups = [];
+  bullets = [];
+  stickyMode = false;
+  laserMode = false;
+
+  document.getElementById("fire-btn").style.display = "none";
+
+  for(let r=0;r<L.rows;r++) {
+    for(let c=0;c<L.cols;c++) {
+      const type = randomBrickType();
+      bricks.push({
+        x: BOFFX + c*(BW+BPAD),
+        y: BOFFY + r*(BH+BPAD),
+        alive: true,
+        color: L.colors[r % L.colors.length],
+        type: type,
+        hits: type === "hard" ? 2 : 1,
+        visible: type !== "invisible"
+      });
+    }
+  }
+
+  paddle = { x: W/2 - PW_BASE/2, y: H-30, w: PW_BASE, h: PH, dx: 0 };
+  ball = { x: W/2, y: H-50, r: BR, dx: 3.5 + lv*0.4, dy: -(3.5 + lv*0.4), stuck: false };
 }
+
+/* ============================
+   DIBUJO GENERAL
+   ============================ */
 
 function draw() {
   ctx.fillStyle = '#0a0a1a';
   ctx.fillRect(0,0,W,H);
+
+  /* LADRILLOS */
   bricks.forEach(b => {
     if(!b.alive) return;
-    ctx.fillStyle = b.color;
+    if(!b.visible) return;
+
+    ctx.fillStyle =
+      b.type === "hard" ? "#ffffff" :
+      b.type === "explosive" ? "#ff00ff" :
+      b.color;
+
     ctx.beginPath();
     ctx.roundRect(b.x, b.y, BW, BH, 3);
     ctx.fill();
   });
-  ctx.fillStyle = '#60a5fa';
+
+  /* PALETA */
+  ctx.fillStyle = laserMode ? "#f87171" : "#60a5fa";
   ctx.beginPath();
   ctx.roundRect(paddle.x, paddle.y, paddle.w, paddle.h, 5);
   ctx.fill();
-  ctx.fillStyle = '#fff';
+
+  /* CAÑONES DEL LASER */
+  if (laserMode) {
+    ctx.fillStyle = "#ef4444";
+    ctx.fillRect(paddle.x + 5, paddle.y - 10, 10, 10);
+    ctx.fillRect(paddle.x + paddle.w - 15, paddle.y - 10, 10, 10);
+  }
+
+  /* BOLA */
+  ctx.fillStyle = stickyMode ? "#22c55e" : "#fff";
   ctx.beginPath();
   ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2);
   ctx.fill();
+
+  /* POWER-UPS */
+  powerups.forEach(p => {
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.roundRect(p.x, p.y, p.w, p.h, 4);
+    ctx.fill();
+
+    ctx.fillStyle = '#000';
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(p.label, p.x + p.w/2, p.y + p.h/2);
+  });
+
+  /* BALAS DEL LASER */
+  bullets.forEach(b => {
+    ctx.fillStyle = "#ff0000";
+    ctx.fillRect(b.x - 2, b.y - 10, 4, 10);
+  });
 }
 
-function update() {
-  ball.x += ball.dx; ball.y += ball.dy;
-  if(ball.x - ball.r < 0) { ball.x = ball.r; ball.dx = Math.abs(ball.dx); }
-  if(ball.x + ball.r > W) { ball.x = W - ball.r; ball.dx = -Math.abs(ball.dx); }
-  if(ball.y - ball.r < 0) { ball.y = ball.r; ball.dy = Math.abs(ball.dy); }
-  if(ball.x > paddle.x && ball.x < paddle.x+paddle.w && ball.y+ball.r >= paddle.y && ball.y+ball.r <= paddle.y+paddle.h+5 && ball.dy>0) {
-    let hit = (ball.x - (paddle.x + paddle.w/2)) / (paddle.w/2);
-    ball.dx = hit * 5; ball.dy = -Math.abs(ball.dy); ball.y = paddle.y - ball.r - 1;
+/* ============================
+   POWER-UPS
+   ============================ */
+
+function spawnPowerup(x, y) {
+  if (Math.random() > 0.25) return;
+
+  const types = [
+    { type: 'PADDLE_BIG', color: '#22c55e', label: 'P' },
+    { type: 'BALL_SLOW',  color: '#3b82f6', label: 'S' },
+    { type: 'LIFE_UP',    color: '#f97316', label: 'L' },
+    { type: 'LASER',      color: '#ef4444', label: '🔫' },
+    { type: 'STICKY',     color: '#22c55e', label: '🧲' }
+  ];
+
+  const t = types[Math.floor(Math.random()*types.length)];
+
+  powerups.push({
+    x: x + BW/2 - 10,
+    y: y,
+    w: 22,
+    h: 14,
+    dy: 2,
+    type: t.type,
+    color: t.color,
+    label: t.label
+  });
+}
+
+function applyPowerup(p) {
+  playSound(sndPower);
+
+  if (p.type === 'PADDLE_BIG') {
+    paddle.w = Math.min(paddle.w + 25, 140);
   }
+  else if (p.type === 'BALL_SLOW') {
+    ball.dx *= 0.7;
+    ball.dy *= 0.7;
+  }
+  else if (p.type === 'LIFE_UP') {
+    lives++;
+    document.getElementById('lives').textContent = lives;
+  }
+  else if (p.type === 'LASER') {
+    laserMode = true;
+    stickyMode = false;
+    document.getElementById("fire-btn").style.display = "flex";
+  }
+  else if (p.type === 'STICKY') {
+    stickyMode = true;
+    laserMode = false;
+    document.getElementById("fire-btn").style.display = "flex";
+    playSound(sndSticky);
+  }
+}
+
+/* ============================
+   EXPLOSIÓN DE LADRILLOS
+   ============================ */
+
+function explodeBrick(b) {
+  bricks.forEach(nb => {
+    if (!nb.alive) return;
+    const dx = Math.abs(nb.x - b.x);
+    const dy = Math.abs(nb.y - b.y);
+    if (dx < BW*1.5 && dy < BH*1.5) nb.alive = false;
+  });
+  playSound(sndExplode);
+}
+
+
+
+
+
+/* ============================
+   ACTUALIZACIÓN DEL JUEGO
+   ============================ */
+
+function update() {
+
+  /* ============================
+     MOVIMIENTO DE LA BOLA
+     ============================ */
+
+  if (!ball.stuck) {
+    ball.x += ball.dx;
+    ball.y += ball.dy;
+  } else {
+    ball.x = paddle.x + paddle.w/2;
+    ball.y = paddle.y - ball.r - 1;
+  }
+
+  /* REBOTES LATERALES */
+  if(ball.x - ball.r < 0) {
+    ball.x = ball.r;
+    ball.dx = Math.abs(ball.dx);
+    playSound(sndBounce);
+  }
+  if(ball.x + ball.r > W) {
+    ball.x = W - ball.r;
+    ball.dx = -Math.abs(ball.dx);
+    playSound(sndBounce);
+  }
+
+  /* REBOTE SUPERIOR */
+  if(ball.y - ball.r < 0) {
+    ball.y = ball.r;
+    ball.dy = Math.abs(ball.dy);
+    playSound(sndBounce);
+  }
+
+  /* ============================
+     COLISIÓN CON LA PALETA
+     ============================ */
+
+  if(ball.x > paddle.x && ball.x < paddle.x+paddle.w &&
+     ball.y+ball.r >= paddle.y && ball.y+ball.r <= paddle.y+paddle.h+5 && ball.dy>0) {
+
+    if (stickyMode) {
+      ball.stuck = true;
+      playSound(sndSticky);
+    } else {
+      let hit = (ball.x - (paddle.x + paddle.w/2)) / (paddle.w/2);
+      ball.dx = hit * 5;
+      ball.dy = -Math.abs(ball.dy);
+      ball.y = paddle.y - ball.r - 1;
+      playSound(sndBounce);
+    }
+  }
+
+  /* ============================
+     CAÍDA DE LA BOLA
+     ============================ */
+
   if(ball.y - ball.r > H) {
     lives--;
     document.getElementById('lives').textContent = lives;
-    if(lives <= 0) { endGame(false); return; }
-    ball.x = W/2; ball.y = H-50;
-    ball.dx = 3.5 + level*0.4; ball.dy = -(3.5 + level*0.4);
+
+    if(lives <= 0) {
+      endGame(false);
+      return;
+    }
+
+    ball.x = W/2;
+    ball.y = H-50;
+    ball.dx = 3.5 + level*0.4;
+    ball.dy = -(3.5 + level*0.4);
+    ball.stuck = false;
+    paddle.w = PW_BASE;
+    stickyMode = false;
+    laserMode = false;
+    document.getElementById("fire-btn").style.display = "none";
   }
+
+  /* ============================
+     COLISIÓN CON LADRILLOS
+     ============================ */
+
   bricks.forEach(b => {
     if(!b.alive) return;
-    if(ball.x+ball.r > b.x && ball.x-ball.r < b.x+BW && ball.y+ball.r > b.y && ball.y-ball.r < b.y+BH) {
-      b.alive = false; score += 10*(level+1);
-      document.getElementById('score').textContent = score;
-      const fromLeft = ball.x < b.x, fromRight = ball.x > b.x+BW;
-      if(fromLeft || fromRight) ball.dx *= -1; else ball.dy *= -1;
+
+    if(ball.x+ball.r > b.x && ball.x-ball.r < b.x+BW &&
+       ball.y+ball.r > b.y && ball.y-ball.r < b.y+BH) {
+
+      if (b.type === "invisible") b.visible = true;
+
+      b.hits--;
+      if (b.hits <= 0) {
+        b.alive = false;
+
+        if (b.type === "explosive") explodeBrick(b);
+
+        score += 10*(level+1);
+        document.getElementById('score').textContent = score;
+
+        spawnPowerup(b.x, b.y);
+        playSound(sndBrick);
+      }
+
+      const fromLeft = ball.x < b.x;
+      const fromRight = ball.x > b.x+BW;
+
+      if(fromLeft || fromRight) ball.dx *= -1;
+      else ball.dy *= -1;
     }
   });
+
+  /* ============================
+     POWER-UPS EN CAÍDA
+     ============================ */
+
+  powerups.forEach(p => p.y += p.dy);
+
+  powerups = powerups.filter(p => {
+    if (p.y > H) return false;
+
+    if (p.x + p.w > paddle.x && p.x < paddle.x + paddle.w &&
+        p.y + p.h > paddle.y && p.y < paddle.y + paddle.h) {
+      applyPowerup(p);
+      return false;
+    }
+    return true;
+  });
+
+  /* ============================
+     MOVIMIENTO DE LA PALETA
+     ============================ */
+
   paddle.x += paddle.dx;
   if(paddle.x < 0) paddle.x = 0;
   if(paddle.x + paddle.w > W) paddle.x = W - paddle.w;
+
+  /* ============================
+     BALAS DEL LASER
+     ============================ */
+
+  bullets.forEach(b => b.y -= 8);
+
+  bullets = bullets.filter(b => {
+    if (b.y < 0) return false;
+
+    for (let brick of bricks) {
+      if (!brick.alive) continue;
+
+      if (b.x > brick.x && b.x < brick.x + BW &&
+          b.y > brick.y && b.y < brick.y + BH) {
+
+        brick.hits--;
+        if (brick.hits <= 0) {
+          brick.alive = false;
+          if (brick.type === "explosive") explodeBrick(brick);
+          score += 10*(level+1);
+          document.getElementById('score').textContent = score;
+          spawnPowerup(brick.x, brick.y);
+        }
+
+        playSound(sndLaser);
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  /* ============================
+     CAMBIO DE NIVEL
+     ============================ */
+
   if(bricks.every(b => !b.alive)) {
     if(level < LEVELS.length-1) {
-      level++; document.getElementById('level').textContent = level+1;
+      level++;
+      document.getElementById('level').textContent = level+1;
       initLevel(level);
       document.getElementById('msg').textContent = '¡Nivel ' + (level+1) + '!';
       setTimeout(() => { if(running) document.getElementById('msg').textContent = ''; }, 1500);
-    } else { endGame(true); }
+    } else {
+      endGame(true);
+    }
   }
 }
 
-function endGame(win) {
-  running = false; cancelAnimationFrame(raf);
-  document.getElementById('msg').textContent = win ? '¡¡GANASTE!! Puntos: ' + score : 'GAME OVER - Puntos: ' + score;
-  document.getElementById('start-btn').textContent = 'REINICIAR';
-  document.getElementById('start-btn').style.display = '';
+/* ============================
+   DISPARAR (LASER)
+   ============================ */
+
+function fireLaser() {
+  if (!laserMode) return;
+
+  bullets.push({ x: paddle.x + 10, y: paddle.y - 10 });
+  bullets.push({ x: paddle.x + paddle.w - 10, y: paddle.y - 10 });
+
+  playSound(sndLaser);
 }
 
-function loop() { update(); draw(); if(running) raf = requestAnimationFrame(loop); }
+/* ============================
+   SOLTAR BOLA (STICKY)
+   ============================ */
+
+function releaseBall() {
+  if (!stickyMode) return;
+  ball.stuck = false;
+  ball.dy = -Math.abs(ball.dy);
+  playSound(sndSticky);
+}
+
+/* ============================
+   BOTÓN FIRE (móvil)
+   ============================ */
+
+document.getElementById("fire-btn").addEventListener("click", () => {
+  if (laserMode) fireLaser();
+  if (stickyMode) releaseBall();
+});
+
+/* ============================
+   BOTÓN SONIDO
+   ============================ */
+
+document.getElementById("sound-btn").addEventListener("click", () => {
+  soundEnabled = !soundEnabled;
+  document.getElementById("sound-btn").textContent = soundEnabled ? "🔊" : "🔇";
+});
+
+/* ============================
+   LOOP PRINCIPAL
+   ============================ */
+
+function loop() {
+  update();
+  draw();
+  if(running) raf = requestAnimationFrame(loop);
+}
+
+/* ============================
+   INICIO DEL JUEGO
+   ============================ */
 
 document.getElementById('start-btn').addEventListener('click', () => {
   score=0; lives=3; level=0;
@@ -135,16 +597,33 @@ document.getElementById('start-btn').addEventListener('click', () => {
   document.getElementById('lives').textContent = 3;
   document.getElementById('msg').textContent = '';
   document.getElementById('start-btn').style.display = 'none';
-  initLevel(0); running=true; raf=requestAnimationFrame(loop);
+
+  initLevel(0);
+  running=true;
+  raf=requestAnimationFrame(loop);
 });
+
+/* ============================
+   CONTROLES PC
+   ============================ */
 
 document.addEventListener('keydown', e => {
   if(e.key==='ArrowLeft') paddle.dx=-PSPEED;
   if(e.key==='ArrowRight') paddle.dx=PSPEED;
+
+  if(e.key===' ') {
+    if (laserMode) fireLaser();
+    if (stickyMode) releaseBall();
+  }
 });
+
 document.addEventListener('keyup', e => {
   if(e.key==='ArrowLeft'||e.key==='ArrowRight') paddle.dx=0;
 });
+
+/* ============================
+   CONTROLES MÓVIL
+   ============================ */
 
 canvas.addEventListener('mousemove', e => {
   const rect = canvas.getBoundingClientRect();
@@ -169,4 +648,3 @@ canvas.addEventListener('touchstart', e => {
 draw();
 </script>
 </body>
-</html>
